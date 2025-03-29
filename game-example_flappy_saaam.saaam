@@ -1,0 +1,601 @@
+// Flappy SAAAM - Starter Template
+// A simple Flappy Bird clone made with SAAAM
+
+// Register game lifecycle functions
+SAAAM.registerCreate(create);
+SAAAM.registerStep(step);
+SAAAM.registerDraw(draw);
+
+// Game variables
+const GRAVITY = 600;
+const JUMP_FORCE = 300;
+const PIPE_SPEED = 200;
+const PIPE_SPAWN_TIME = 1.5;
+const GAP_HEIGHT = 150;
+
+// Game state
+let gameState = "title"; // "title", "playing", "gameover"
+let bird = {
+  x: 100,
+  y: 300,
+  width: 40,
+  height: 30,
+  velocity: 0,
+  rotation: 0
+};
+
+let pipes = [];
+let score = 0;
+let highScore = 0;
+let timeSinceLastPipe = 0;
+let particles = [];
+
+// Create function - run once at start
+function create() {
+  console.log("Flappy SAAAM initialized!");
+  
+  // Try to load high score
+  if (SAAAM.loadData) {
+    const savedScore = SAAAM.loadData("flappy_high_score");
+    if (savedScore) {
+      highScore = parseInt(savedScore);
+    }
+  }
+  
+  // Play background music if available
+  if (SAAAM.playMusic) {
+    SAAAM.playMusic("background", 0.3, true);
+  }
+}
+
+// Step function - run every frame
+function step(deltaTime) {
+  // Handle game states
+  switch (gameState) {
+    case "title":
+      updateTitle(deltaTime);
+      break;
+    case "playing":
+      updatePlaying(deltaTime);
+      break;
+    case "gameover":
+      updateGameOver(deltaTime);
+      break;
+  }
+  
+  // Always update particles
+  updateParticles(deltaTime);
+}
+
+// Update title screen
+function updateTitle(deltaTime) {
+  // Make bird hover
+  bird.y = 300 + Math.sin(SAAAM.gameTime * 2) * 20;
+  
+  // Start game on space/tap
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.space) || 
+      SAAAM.mouseCheckPressed(0)) {
+    startGame();
+  }
+}
+
+// Update gameplay
+function updatePlaying(deltaTime) {
+  // Apply gravity to bird
+  bird.velocity += GRAVITY * deltaTime;
+  bird.y += bird.velocity * deltaTime;
+  
+  // Calculate bird rotation based on velocity
+  bird.rotation = Math.max(-30, Math.min(90, bird.velocity * 0.1));
+  
+  // Handle jump
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.space) || 
+      SAAAM.mouseCheckPressed(0)) {
+    jump();
+  }
+  
+  // Spawn pipes
+  timeSinceLastPipe += deltaTime;
+  if (timeSinceLastPipe >= PIPE_SPAWN_TIME) {
+    spawnPipe();
+    timeSinceLastPipe = 0;
+  }
+  
+  // Update pipes
+  updatePipes(deltaTime);
+  
+  // Check collisions
+  checkCollisions();
+  
+  // Ensure bird stays in bounds
+  if (bird.y < 0) {
+    bird.y = 0;
+    bird.velocity = 0;
+  }
+  
+  // Check if bird hit the ground
+  if (bird.y + bird.height > 600) {
+    gameOver();
+  }
+}
+
+// Update game over screen
+function updateGameOver(deltaTime) {
+  // Restart game on space/tap after a delay
+  if ((SAAAM.keyboardCheckPressed(SAAAM.vk.space) || 
+       SAAAM.mouseCheckPressed(0)) && 
+      SAAAM.gameTime - gameOverTime > 1) {
+    gameState = "title";
+    resetGame();
+  }
+}
+
+// Draw function - render the game
+function draw(ctx) {
+  // Draw background
+  drawBackground(ctx);
+  
+  // Draw game elements
+  drawPipes(ctx);
+  drawBird(ctx);
+  drawParticles(ctx);
+  
+  // Draw UI based on game state
+  switch (gameState) {
+    case "title":
+      drawTitle(ctx);
+      break;
+    case "playing":
+      drawScore(ctx);
+      break;
+    case "gameover":
+      drawGameOver(ctx);
+      break;
+  }
+}
+
+// Draw the background
+function drawBackground(ctx) {
+  // Sky gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, 600);
+  gradient.addColorStop(0, "#4FC3F7");
+  gradient.addColorStop(1, "#29B6F6");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 800, 600);
+  
+  // Ground
+  ctx.fillStyle = "#8BC34A";
+  ctx.fillRect(0, 550, 800, 50);
+  
+  // Ground detail
+  ctx.fillStyle = "#689F38";
+  for (let i = 0; i < 40; i++) {
+    const x = i * 20;
+    const height = 5 + Math.sin(x * 0.1) * 3;
+    ctx.fillRect(x, 550 - height, 20, height);
+  }
+  
+  // Clouds
+  ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+  for (let i = 0; i < 5; i++) {
+    const x = (i * 200 + SAAAM.gameTime * 20) % 900 - 100;
+    const y = 100 + i * 30;
+    drawCloud(ctx, x, y, 60 + i * 10);
+  }
+}
+
+// Draw a cloud
+function drawCloud(ctx, x, y, size) {
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.5, 0, Math.PI * 2);
+  ctx.arc(x + size * 0.4, y - size * 0.2, size * 0.4, 0, Math.PI * 2);
+  ctx.arc(x + size * 0.6, y + size * 0.1, size * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Draw the bird
+function drawBird(ctx) {
+  ctx.save();
+  
+  // Move to bird center and rotate
+  ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
+  ctx.rotate(bird.rotation * Math.PI / 180);
+  
+  // Body
+  ctx.fillStyle = "#FFEB3B";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, bird.width / 2, bird.height / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Wing
+  const wingOffset = Math.sin(SAAAM.gameTime * 15) * 5;
+  ctx.fillStyle = "#FDD835";
+  ctx.beginPath();
+  ctx.ellipse(-5, wingOffset, 10, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Eye
+  ctx.fillStyle = "white";
+  ctx.beginPath();
+  ctx.arc(10, -5, 6, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.fillStyle = "black";
+  ctx.beginPath();
+  ctx.arc(12, -5, 3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Beak
+  ctx.fillStyle = "#FF9800";
+  ctx.beginPath();
+  ctx.moveTo(15, 0);
+  ctx.lineTo(25, -5);
+  ctx.lineTo(25, 5);
+  ctx.closePath();
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+// Draw all pipes
+function drawPipes(ctx) {
+  ctx.fillStyle = "#4CAF50";
+  
+  for (const pipe of pipes) {
+    // Top pipe
+    ctx.fillRect(pipe.x, 0, pipe.width, pipe.gapY);
+    
+    // Bottom pipe
+    const bottomPipeY = pipe.gapY + GAP_HEIGHT;
+    ctx.fillRect(pipe.x, bottomPipeY, pipe.width, 600 - bottomPipeY);
+    
+    // Pipe caps
+    ctx.fillStyle = "#388E3C";
+    ctx.fillRect(pipe.x - 5, pipe.gapY - 20, pipe.width + 10, 20);
+    ctx.fillRect(pipe.x - 5, bottomPipeY, pipe.width + 10, 20);
+    ctx.fillStyle = "#4CAF50";
+  }
+}
+
+// Draw title screen
+function drawTitle(ctx) {
+  // Title
+  ctx.fillStyle = "#2196F3";
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 3;
+  ctx.font = "bold 60px Arial";
+  ctx.textAlign = "center";
+  ctx.strokeText("FLAPPY SAAAM", 400, 200);
+  ctx.fillText("FLAPPY SAAAM", 400, 200);
+  
+  // Instructions
+  ctx.fillStyle = "white";
+  ctx.font = "30px Arial";
+  ctx.fillText("Press SPACE or TAP to start", 400, 450);
+  ctx.font = "20px Arial";
+  ctx.fillText("and to flap your wings", 400, 490);
+  
+  // High score
+  if (highScore > 0) {
+    ctx.font = "bold 25px Arial";
+    ctx.fillText("High Score: " + highScore, 400, 400);
+  }
+}
+
+// Draw score during gameplay
+function drawScore(ctx) {
+  ctx.fillStyle = "white";
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 3;
+  ctx.font = "bold 40px Arial";
+  ctx.textAlign = "center";
+  ctx.strokeText(score.toString(), 400, 80);
+  ctx.fillText(score.toString(), 400, 80);
+}
+
+// Draw game over screen
+function drawGameOver(ctx) {
+  // Semi-transparent overlay
+  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+  ctx.fillRect(0, 0, 800, 600);
+  
+  // Game Over text
+  ctx.fillStyle = "#F44336";
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 3;
+  ctx.font = "bold 60px Arial";
+  ctx.textAlign = "center";
+  ctx.strokeText("GAME OVER", 400, 200);
+  ctx.fillText("GAME OVER", 400, 200);
+  
+  // Score
+  ctx.fillStyle = "white";
+  ctx.font = "30px Arial";
+  ctx.fillText("Score: " + score, 400, 280);
+  
+  // High score
+  ctx.font = "bold 35px Arial";
+  ctx.fillText("High Score: " + highScore, 400, 340);
+  
+  // Restart instructions
+  if (SAAAM.gameTime - gameOverTime > 1) {
+    ctx.font = "25px Arial";
+    ctx.fillText("Press SPACE or TAP to restart", 400, 450);
+  }
+}
+
+// Draw particles
+function drawParticles(ctx) {
+  for (const particle of particles) {
+    const alpha = particle.life / particle.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = particle.color;
+    
+    if (particle.type === "circle") {
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (particle.type === "feather") {
+      ctx.save();
+      ctx.translate(particle.x, particle.y);
+      ctx.rotate(particle.rotation);
+      
+      // Draw feather shape
+      ctx.beginPath();
+      ctx.moveTo(0, -particle.size);
+      ctx.bezierCurveTo(
+        particle.size/2, -particle.size/2,
+        particle.size/2, particle.size/2,
+        0, particle.size
+      );
+      ctx.bezierCurveTo(
+        -particle.size/2, particle.size/2,
+        -particle.size/2, -particle.size/2,
+        0, -particle.size
+      );
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+// Start the game
+function startGame() {
+  gameState = "playing";
+  resetGame();
+  
+  // Play start sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("start");
+  }
+}
+
+// Reset the game
+function resetGame() {
+  bird.y = 300;
+  bird.velocity = 0;
+  bird.rotation = 0;
+  pipes = [];
+  score = 0;
+  timeSinceLastPipe = 0;
+  particles = [];
+}
+
+// Bird jump
+function jump() {
+  bird.velocity = -JUMP_FORCE;
+  
+  // Play jump sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("jump");
+  }
+  
+  // Create feather particles
+  for (let i = 0; i < 5; i++) {
+    createFeatherParticle();
+  }
+}
+
+// Spawn a new pipe
+function spawnPipe() {
+  const pipe = {
+    x: 800,
+    width: 80,
+    gapY: 100 + Math.random() * 300,
+    passed: false
+  };
+  
+  pipes.push(pipe);
+}
+
+// Update all pipes
+function updatePipes(deltaTime) {
+  for (let i = pipes.length - 1; i >= 0; i--) {
+    const pipe = pipes[i];
+    
+    // Move pipe
+    pipe.x -= PIPE_SPEED * deltaTime;
+    
+    // Check if pipe is past the bird and not counted yet
+    if (!pipe.passed && pipe.x + pipe.width < bird.x) {
+      pipe.passed = true;
+      increaseScore();
+    }
+    
+    // Remove pipes that are off screen
+    if (pipe.x + pipe.width < 0) {
+      pipes.splice(i, 1);
+    }
+  }
+}
+
+// Increase score
+function increaseScore() {
+  score++;
+  
+  // Check for new high score
+  if (score > highScore) {
+    highScore = score;
+    
+    // Save high score if possible
+    if (SAAAM.saveData) {
+      SAAAM.saveData("flappy_high_score", highScore.toString());
+    }
+  }
+  
+  // Play score sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("score");
+  }
+  
+  // Create score particles
+  createScoreParticles();
+}
+
+// Check collisions
+function checkCollisions() {
+  // Get bird hitbox (smaller than visual for fairness)
+  const birdHitbox = {
+    x: bird.x + 5,
+    y: bird.y + 5,
+    width: bird.width - 10,
+    height: bird.height - 10
+  };
+  
+  // Check collision with each pipe
+  for (const pipe of pipes) {
+    // Top pipe collision
+    if (checkRectCollision(birdHitbox, {
+      x: pipe.x,
+      y: 0,
+      width: pipe.width,
+      height: pipe.gapY
+    })) {
+      gameOver();
+      return;
+    }
+    
+    // Bottom pipe collision
+    const bottomPipeY = pipe.gapY + GAP_HEIGHT;
+    if (checkRectCollision(birdHitbox, {
+      x: pipe.x,
+      y: bottomPipeY,
+      width: pipe.width,
+      height: 600 - bottomPipeY
+    })) {
+      gameOver();
+      return;
+    }
+  }
+}
+
+// Check collision between two rectangles
+function checkRectCollision(rect1, rect2) {
+  return rect1.x < rect2.x + rect2.width &&
+         rect1.x + rect1.width > rect2.x &&
+         rect1.y < rect2.y + rect2.height &&
+         rect1.y + rect1.height > rect2.y;
+}
+
+// Game over
+let gameOverTime = 0;
+function gameOver() {
+  gameState = "gameover";
+  gameOverTime = SAAAM.gameTime;
+  
+  // Play game over sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("gameover");
+  }
+  
+  // Create explosion particles
+  createExplosionParticles();
+}
+
+// Create a feather particle
+function createFeatherParticle() {
+  const particle = {
+    type: "feather",
+    x: bird.x + bird.width / 2,
+    y: bird.y + bird.height / 2,
+    size: 4 + Math.random() * 4,
+    color: Math.random() > 0.3 ? "#FFEB3B" : "#FDD835",
+    vx: -30 - Math.random() * 50,
+    vy: (Math.random() - 0.5) * 100,
+    rotation: Math.random() * Math.PI * 2,
+    rotationSpeed: (Math.random() - 0.5) * 10,
+    life: 0.5 + Math.random() * 1.0,
+    maxLife: 0.5 + Math.random() * 1.0
+  };
+  
+  particles.push(particle);
+}
+
+// Create score particles
+function createScoreParticles() {
+  for (let i = 0; i < 10; i++) {
+    const particle = {
+      type: "circle",
+      x: bird.x + 50,
+      y: bird.y - 30,
+      size: 3 + Math.random() * 5,
+      color: "#FFEB3B",
+      vx: (Math.random() - 0.5) * 100,
+      vy: -50 - Math.random() * 100,
+      life: 0.5 + Math.random() * 0.5,
+      maxLife: 0.5 + Math.random() * 0.5
+    };
+    
+    particles.push(particle);
+  }
+}
+
+// Create explosion particles
+function createExplosionParticles() {
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 100 + Math.random() * 200;
+    const particle = {
+      type: "circle",
+      x: bird.x + bird.width / 2,
+      y: bird.y + bird.height / 2,
+      size: 2 + Math.random() * 6,
+      color: i % 3 === 0 ? "#FFEB3B" : i % 3 === 1 ? "#FDD835" : "#FF9800",
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.5 + Math.random() * 1.0,
+      maxLife: 0.5 + Math.random() * 1.0
+    };
+    
+    particles.push(particle);
+  }
+}
+
+// Update particles
+function updateParticles(deltaTime) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const particle = particles[i];
+    
+    // Update life
+    particle.life -= deltaTime;
+    
+    // Remove dead particles
+    if (particle.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    
+    // Update position
+    particle.x += particle.vx * deltaTime;
+    particle.y += particle.vy * deltaTime;
+    
+    // Apply gravity to feathers
+    if (particle.type === "feather") {
+      particle.vy += GRAVITY * 0.1 * deltaTime;
+      particle.rotation += particle.rotationSpeed * deltaTime;
+    }
+  }
+}
