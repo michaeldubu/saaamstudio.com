@@ -1,0 +1,23 @@
+{
+  "name": "saaam-game-converter",
+  "version": "1.0.0",
+  "description": "Converts SAAAM Studio projects into optimized web/desktop-ready games.",
+  "main": "saaam-game-converter.js",
+  "scripts": {
+    "convert": "node saaam-game-converter.js"
+  },
+  "keywords": ["saaam", "game", "converter", "export", "builder"],
+  "author": "Michael Wofford",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "clean-css": "^5.3.2",
+    "imagemin": "^8.0.1",
+    "imagemin-jpegtran": "^7.0.0",
+    "imagemin-pngquant": "^9.0.2",
+    "imagemin-svgo": "^10.0.1",
+    "jsdom": "^22.1.0",
+    "ora": "^6.3.1",
+    "terser": "^5.17.2"
+  }
+}
