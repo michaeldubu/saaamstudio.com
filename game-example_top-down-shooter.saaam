@@ -1,0 +1,1512 @@
+// Top-Down Shooter - Starter Template
+// A fast-paced arcade shooter made with SAAAM
+
+// Register game lifecycle functions
+SAAAM.registerCreate(create);
+SAAAM.registerStep(step);
+SAAAM.registerDraw(draw);
+
+// Game constants
+const PLAYER_SPEED = 200;
+const BULLET_SPEED = 500;
+const ENEMY_SPEED_MIN = 50;
+const ENEMY_SPEED_MAX = 150;
+const ENEMY_SPAWN_DELAY_MIN = 0.5;
+const ENEMY_SPAWN_DELAY_MAX = 2;
+const POWERUP_SPAWN_CHANCE = 0.05; // 5% chance per enemy
+
+// Game state
+let gameState = "title"; // "title", "playing", "gameover"
+let player = {
+  x: 400,
+  y: 300,
+  width: 40,
+  height: 40,
+  speed: PLAYER_SPEED,
+  rotation: 0,
+  health: 100,
+  maxHealth: 100,
+  fireRate: 0.2,
+  fireTimer: 0,
+  damageTimer: 0,
+  powerupTimer: 0,
+  weaponType: "normal" // "normal", "spread", "rapid", "laser"
+};
+
+let bullets = [];
+let enemies = [];
+let particles = [];
+let powerups = [];
+let score = 0;
+let highScore = 0;
+let enemySpawnTimer = 0;
+let nextEnemySpawnDelay = 2;
+let gameTime = 0;
+let gameOverTime = 0;
+
+// Create function - run once at game start
+function create() {
+  console.log("Top-Down Shooter initialized!");
+  
+  // Load high score if available
+  if (SAAAM.loadData) {
+    const savedScore = SAAAM.loadData("shooter_high_score");
+    if (savedScore) {
+      highScore = parseInt(savedScore);
+    }
+  }
+  
+  // Set up mouse handling for rotation
+  if (SAAAM.mouseX) {
+    updatePlayerRotation();
+  }
+  
+  // Play background music if available
+  if (SAAAM.playMusic) {
+    SAAAM.playMusic("background", 0.4, true);
+  }
+}
+
+// Step function - run every frame
+function step(deltaTime) {
+  // Update game time
+  gameTime += deltaTime;
+  
+  // Handle different game states
+  switch (gameState) {
+    case "title":
+      updateTitle(deltaTime);
+      break;
+    case "playing":
+      updatePlaying(deltaTime);
+      break;
+    case "gameover":
+      updateGameOver(deltaTime);
+      break;
+  }
+  
+  // Always update particles
+  updateParticles(deltaTime);
+}
+
+// Update title screen
+function updateTitle(deltaTime) {
+  // Player rotates slowly on title screen
+  player.rotation += 45 * deltaTime;
+  
+  // Start game on space/click
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.space) || 
+      SAAAM.mouseCheckPressed(0)) {
+    startGame();
+  }
+}
+
+// Update gameplay
+function updatePlaying(deltaTime) {
+  // Handle player input
+  handlePlayerInput(deltaTime);
+  
+  // Update player
+  updatePlayer(deltaTime);
+  
+  // Update bullets
+  updateBullets(deltaTime);
+  
+  // Spawn and update enemies
+  updateEnemySpawning(deltaTime);
+  updateEnemies(deltaTime);
+  
+  // Update powerups
+  updatePowerups(deltaTime);
+  
+  // Check collisions
+  checkCollisions();
+}
+
+// Update game over screen
+function updateGameOver(deltaTime) {
+  // Allow restart after a delay
+  if ((SAAAM.keyboardCheckPressed(SAAAM.vk.space) || 
+       SAAAM.mouseCheckPressed(0)) && 
+      gameTime - gameOverTime > 1.5) {
+    gameState = "title";
+    resetGame();
+  }
+}
+
+// Draw function - render the game
+function draw(ctx) {
+  // Draw background
+  drawBackground(ctx);
+  
+  // Draw game elements
+  drawPowerups(ctx);
+  drawBullets(ctx);
+  drawEnemies(ctx);
+  drawPlayer(ctx);
+  drawParticles(ctx);
+  
+  // Draw UI based on game state
+  switch (gameState) {
+    case "title":
+      drawTitle(ctx);
+      break;
+    case "playing":
+      drawGameUI(ctx);
+      break;
+    case "gameover":
+      drawGameOver(ctx);
+      break;
+  }
+}
+
+// Draw the background
+function drawBackground(ctx) {
+  // Dark background with grid pattern
+  ctx.fillStyle = "#1A1A2E";
+  ctx.fillRect(0, 0, 800, 600);
+  
+  // Draw grid
+  ctx.strokeStyle = "rgba(40, 50, 80, 0.5)";
+  ctx.lineWidth = 1;
+  
+  // Vertical lines
+  for (let x = 0; x <= 800; x += 50) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 600);
+    ctx.stroke();
+  }
+  
+  // Horizontal lines
+  for (let y = 0; y <= 600; y += 50) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(800, y);
+    ctx.stroke();
+  }
+}
+
+// Draw the player
+function drawPlayer(ctx) {
+  ctx.save();
+  
+  // Move to player center and rotate
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.rotation * Math.PI / 180);
+  
+  // Draw ship body
+  if (player.damageTimer > 0 && Math.sin(gameTime * 30) > 0) {
+    // Flash red when damaged
+    ctx.fillStyle = "#FF5555";
+  } else if (player.powerupTimer > 0) {
+    // Glow when powered up
+    ctx.fillStyle = powerupColor();
+  } else {
+    ctx.fillStyle = "#4FC3F7";
+  }
+  
+  // Main body
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(-10, -15);
+  ctx.lineTo(-5, 0);
+  ctx.lineTo(-10, 15);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Engine glow
+  if (isPlayerMoving()) {
+    ctx.fillStyle = "#FF9800";
+    ctx.globalAlpha = 0.8 + Math.sin(gameTime * 20) * 0.2;
+    
+    ctx.beginPath();
+    ctx.moveTo(-5, 0);
+    ctx.lineTo(-15, -7);
+    ctx.lineTo(-25 - Math.random() * 10, 0);
+    ctx.lineTo(-15, 7);
+    ctx.closePath();
+    ctx.fill();
+    
+    ctx.globalAlpha = 1.0;
+  }
+  
+  // Cockpit
+  ctx.fillStyle = "#0277BD";
+  ctx.beginPath();
+  ctx.arc(5, 0, 5, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Weapon indicator
+  let weaponColor;
+  switch (player.weaponType) {
+    case "spread": weaponColor = "#FFEB3B"; break;
+    case "rapid": weaponColor = "#8BC34A"; break;
+    case "laser": weaponColor = "#FF5722"; break;
+    default: weaponColor = "#FFFFFF";
+  }
+  
+  ctx.fillStyle = weaponColor;
+  ctx.fillRect(10, -8, 4, 16);
+  
+  ctx.restore();
+  
+  // Draw shield effect if powered up
+  if (player.powerupTimer > 0) {
+    const pulseSize = 1 + Math.sin(gameTime * 10) * 0.1;
+    
+    ctx.globalAlpha = 0.3 + Math.sin(gameTime * 5) * 0.1;
+    ctx.fillStyle = powerupColor();
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 30 * pulseSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+// Return appropriate color based on the powerup
+function powerupColor() {
+  switch (player.weaponType) {
+    case "spread": return "#FFEB3B"; // Yellow
+    case "rapid": return "#8BC34A";  // Green
+    case "laser": return "#FF5722";  // Orange
+    default: return "#4FC3F7";       // Blue
+  }
+}
+
+// Check if player is moving
+function isPlayerMoving() {
+  return SAAAM.keyboardCheck(SAAAM.vk.up) || 
+         SAAAM.keyboardCheck(SAAAM.vk.w) ||
+         SAAAM.keyboardCheck(SAAAM.vk.down) || 
+         SAAAM.keyboardCheck(SAAAM.vk.s) ||
+         SAAAM.keyboardCheck(SAAAM.vk.left) || 
+         SAAAM.keyboardCheck(SAAAM.vk.a) ||
+         SAAAM.keyboardCheck(SAAAM.vk.right) || 
+         SAAAM.keyboardCheck(SAAAM.vk.d);
+}
+
+// Draw all bullets
+function drawBullets(ctx) {
+  for (const bullet of bullets) {
+    if (bullet.type === "laser") {
+      // Laser beam
+      const gradient = ctx.createLinearGradient(
+        bullet.x, bullet.y, 
+        bullet.x + Math.cos(bullet.rotation * Math.PI / 180) * 800,
+        bullet.y + Math.sin(bullet.rotation * Math.PI / 180) * 800
+      );
+      gradient.addColorStop(0, "#FF5722");
+      gradient.addColorStop(1, "rgba(255, 87, 34, 0)");
+      
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(bullet.rotation * Math.PI / 180);
+      
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 3 + Math.sin(gameTime * 20) * 1;
+      
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(800, 0);
+      ctx.stroke();
+      
+      // Glow effect
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(800, 0);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+      
+      ctx.restore();
+    } else {
+      // Regular bullets
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(bullet.rotation * Math.PI / 180);
+      
+      if (bullet.type === "spread") {
+        ctx.fillStyle = "#FFEB3B";
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (bullet.type === "rapid") {
+        ctx.fillStyle = "#8BC34A";
+        ctx.fillRect(-8, -2, 12, 4);
+      } else {
+        // Normal bullet
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(-6, -2, 12, 4);
+      }
+      
+      ctx.restore();
+    }
+  }
+}
+
+// Draw all enemies
+function drawEnemies(ctx) {
+  for (const enemy of enemies) {
+    ctx.save();
+    
+    // Move to enemy center and rotate
+    ctx.translate(enemy.x, enemy.y);
+    ctx.rotate(enemy.rotation * Math.PI / 180);
+    
+    // Different enemy shapes based on type
+    if (enemy.type === "chaser") {
+      // Triangle
+      ctx.fillStyle = "#F44336";
+      ctx.beginPath();
+      ctx.moveTo(15, 0);
+      ctx.lineTo(-10, -10);
+      ctx.lineTo(-10, 10);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Engine effect
+      ctx.fillStyle = "#FF9800";
+      ctx.globalAlpha = 0.7 + Math.sin(gameTime * 15) * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(-10, -5);
+      ctx.lineTo(-20, 0);
+      ctx.lineTo(-10, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+      
+    } else if (enemy.type === "shooter") {
+      // Rectangle with gun
+      ctx.fillStyle = "#9C27B0";
+      ctx.fillRect(-15, -15, 30, 30);
+      
+      // Gun
+      ctx.fillStyle = "#7B1FA2";
+      ctx.fillRect(0, -5, 20, 10);
+      
+    } else if (enemy.type === "tank") {
+      // Circle
+      ctx.fillStyle = "#FF5722";
+      ctx.beginPath();
+      ctx.arc(0, 0, 20, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Armor plating
+      ctx.strokeStyle = "#BF360C";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Health bar
+    const healthPercent = enemy.health / enemy.maxHealth;
+    const barWidth = 40;
+    const filledWidth = barWidth * healthPercent;
+    
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(-barWidth/2, -30, barWidth, 5);
+    
+    if (healthPercent > 0.6) {
+      ctx.fillStyle = "#4CAF50";
+    } else if (healthPercent > 0.3) {
+      ctx.fillStyle = "#FFC107";
+    } else {
+      ctx.fillStyle = "#F44336";
+    }
+    
+    ctx.fillRect(-barWidth/2, -30, filledWidth, 5);
+    
+    ctx.restore();
+  }
+}
+
+// Draw powerups
+function drawPowerups(ctx) {
+  for (const powerup of powerups) {
+    ctx.save();
+    ctx.translate(powerup.x, powerup.y);
+    
+    // Rotate slowly
+    const rotation = gameTime * 100;
+    ctx.rotate(rotation * Math.PI / 180);
+    
+    // Different color based on type
+    switch (powerup.type) {
+      case "spread":
+        ctx.fillStyle = "#FFEB3B";
+        break;
+      case "rapid":
+        ctx.fillStyle = "#8BC34A";
+        break;
+      case "laser":
+        ctx.fillStyle = "#FF5722";
+        break;
+      case "health":
+        ctx.fillStyle = "#F44336";
+        break;
+    }
+    
+    // Draw powerup shape
+    if (powerup.type === "health") {
+      // Health cross
+      ctx.fillRect(-15, -5, 30, 10);
+      ctx.fillRect(-5, -15, 10, 30);
+    } else {
+      // Weapon powerup (pentagon)
+      const size = 15;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = i * 2 * Math.PI / 5 - Math.PI / 2;
+        const x = Math.cos(angle) * size;
+        const y = Math.sin(angle) * size;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    
+    // Glow effect
+    ctx.globalAlpha = 0.3 + Math.sin(gameTime * 5) * 0.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+    
+    ctx.restore();
+  }
+}
+
+// Draw particles
+function drawParticles(ctx) {
+  for (const particle of particles) {
+    const alpha = particle.life / particle.maxLife;
+    ctx.globalAlpha = alpha;
+    
+    if (particle.type === "explosion") {
+      // Explosion particle
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (particle.type === "trail") {
+      // Player trail
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (particle.type === "score") {
+      // Score popup
+      ctx.fillStyle = particle.color;
+      ctx.font = `bold ${Math.floor(20 * alpha)}px Arial`;
+      ctx.textAlign = "center";
+      ctx.fillText(particle.text, particle.x, particle.y);
+    }
+    
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+// Draw title screen
+function drawTitle(ctx) {
+  // Title
+  ctx.fillStyle = "#4FC3F7";
+  ctx.strokeStyle = "#0277BD";
+  ctx.lineWidth = 3;
+  ctx.font = "bold 60px Arial";
+  ctx.textAlign = "center";
+  ctx.strokeText("SPACE SHOOTER", 400, 200);
+  ctx.fillText("SPACE SHOOTER", 400, 200);
+  
+  // Instructions
+  ctx.fillStyle = "white";
+  ctx.font = "24px Arial";
+  ctx.fillText("WASD or Arrow Keys to Move", 400, 290);
+  ctx.fillText("Mouse to Aim, Left Click to Shoot", 400, 330);
+  ctx.fillText("Press SPACE or Click to Start", 400, 400);
+  
+  // Credits
+  ctx.font = "16px Arial";
+  ctx.fillText("Created with SAAAM", 400, 550);
+  
+  // High score if available
+  if (highScore > 0) {
+    ctx.font = "bold 30px Arial";
+    ctx.fillText(`High Score: ${highScore}`, 400, 480);
+  }
+}
+
+// Draw game UI during gameplay
+function drawGameUI(ctx) {
+  // Score
+  ctx.fillStyle = "white";
+  ctx.font = "24px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText(`Score: ${score}`, 20, 35);
+  
+  // Health bar
+  const barWidth = 200;
+  const healthPercent = player.health / player.maxHealth;
+  const filledWidth = barWidth * healthPercent;
+  
+  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+  ctx.fillRect(20, 50, barWidth, 20);
+  
+  if (healthPercent > 0.6) {
+    ctx.fillStyle = "#4CAF50";
+  } else if (healthPercent > 0.3) {
+    ctx.fillStyle = "#FFC107";
+  } else {
+    ctx.fillStyle = "#F44336";
+  }
+  
+  ctx.fillRect(20, 50, filledWidth, 20);
+  
+  // Health text
+  ctx.fillStyle = "white";
+  ctx.textAlign = "center";
+  ctx.font = "14px Arial";
+  ctx.fillText(`${Math.ceil(player.health)} / ${player.maxHealth}`, 20 + barWidth / 2, 65);
+  
+  // Weapon type
+  let weaponText = "";
+  switch (player.weaponType) {
+    case "normal": weaponText = "Standard"; break;
+    case "spread": weaponText = "Spread"; break;
+    case "rapid": weaponText = "Rapid"; break;
+    case "laser": weaponText = "Laser"; break;
+  }
+  
+  ctx.textAlign = "right";
+  ctx.fillText(`Weapon: ${weaponText}`, 780, 35);
+  
+  // Powerup timer
+  if (player.powerupTimer > 0) {
+    ctx.fillText(`Powerup: ${Math.ceil(player.powerupTimer)}s`, 780, 60);
+  }
+}
+
+// Draw game over screen
+function drawGameOver(ctx) {
+  // Semi-transparent overlay
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+  ctx.fillRect(0, 0, 800, 600);
+  
+  // Game Over text
+  ctx.fillStyle = "#F44336";
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 3;
+  ctx.font = "bold 70px Arial";
+  ctx.textAlign = "center";
+  ctx.strokeText("GAME OVER", 400, 200);
+  ctx.fillText("GAME OVER", 400, 200);
+  
+  // Score
+  ctx.fillStyle = "white";
+  ctx.font = "30px Arial";
+  ctx.fillText(`Score: ${score}`, 400, 270);
+  
+  // High score
+  ctx.font = "bold 35px Arial";
+  ctx.fillText(`High Score: ${highScore}`, 400, 330);
+  
+  // Restart instructions
+  if (gameTime - gameOverTime > 1.5) {
+    ctx.font = "24px Arial";
+    ctx.fillText("Press SPACE or Click to Restart", 400, 400);
+  }
+}
+
+// Handle player input
+function handlePlayerInput(deltaTime) {
+  // Movement
+  let moveX = 0;
+  let moveY = 0;
+  
+  if (SAAAM.keyboardCheck(SAAAM.vk.left) || SAAAM.keyboardCheck(SAAAM.vk.a)) {
+    moveX -= 1;
+  }
+  if (SAAAM.keyboardCheck(SAAAM.vk.right) || SAAAM.keyboardCheck(SAAAM.vk.d)) {
+    moveX += 1;
+  }
+  if (SAAAM.keyboardCheck(SAAAM.vk.up) || SAAAM.keyboardCheck(SAAAM.vk.w)) {
+    moveY -= 1;
+  }
+  if (SAAAM.keyboardCheck(SAAAM.vk.down) || SAAAM.keyboardCheck(SAAAM.vk.s)) {
+    moveY += 1;
+  }
+  
+  // Normalize diagonal movement
+  if (moveX !== 0 && moveY !== 0) {
+    const length = Math.sqrt(moveX * moveX + moveY * moveY);
+    moveX /= length;
+    moveY /= length;
+  }
+  
+  // Apply movement
+  player.x += moveX * player.speed * deltaTime;
+  player.y += moveY * player.speed * deltaTime;
+  
+  // Constrain player to screen
+  player.x = Math.max(20, Math.min(780, player.x));
+  player.y = Math.max(20, Math.min(580, player.y));
+  
+  // Update player rotation to face mouse
+  updatePlayerRotation();
+  
+  // Shooting
+  if (player.fireTimer > 0) {
+    player.fireTimer -= deltaTime;
+  }
+  
+  if ((SAAAM.mouseCheck(0) || SAAAM.keyboardCheck(SAAAM.vk.space)) && player.fireTimer <= 0) {
+    fireWeapon();
+  }
+  
+  // Create engine trail particles
+  if (moveX !== 0 || moveY !== 0) {
+    createTrailParticle();
+  }
+}
+
+// Create a trail particle behind the player
+function createTrailParticle() {
+  // Calculate position behind the player
+  const angle = (player.rotation + 180) * Math.PI / 180;
+  const distance = 15 + Math.random() * 5;
+  const x = player.x + Math.cos(angle) * distance;
+  const y = player.y + Math.sin(angle) * distance;
+  
+  const particle = {
+    type: "trail",
+    x: x,
+    y: y,
+    size: 3 + Math.random() * 3,
+    color: Math.random() > 0.7 ? "#FF9800" : "#4FC3F7",
+    life: 0.3 + Math.random() * 0.4,
+    maxLife: 0.3 + Math.random() * 0.4,
+    vx: Math.cos(angle) * -10,
+    vy: Math.sin(angle) * -10
+  };
+  
+  particles.push(particle);
+}
+
+// Update player rotation to face mouse
+function updatePlayerRotation() {
+  if (SAAAM.mouseX && SAAAM.mouseY) {
+    const dx = SAAAM.mouseX - player.x;
+    const dy = SAAAM.mouseY - player.y;
+    player.rotation = Math.atan2(dy, dx) * 180 / Math.PI;
+  }
+}
+
+// Update player status
+function updatePlayer(deltaTime) {
+  // Update damage timer
+  if (player.damageTimer > 0) {
+    player.damageTimer -= deltaTime;
+  }
+  
+  // Update powerup timer
+  if (player.powerupTimer > 0) {
+    player.powerupTimer -= deltaTime;
+    
+    // Reset weapon when powerup expires
+    if (player.powerupTimer <= 0) {
+      player.weaponType = "normal";
+    }
+  }
+}
+
+// Fire the player's weapon
+function fireWeapon() {
+  // Reset fire timer based on weapon type
+  if (player.weaponType === "rapid") {
+    player.fireTimer = player.fireRate * 0.5; // Faster fire rate
+  } else {
+    player.fireTimer = player.fireRate;
+  }
+  
+  // Fire sound
+  if (SAAAM.playSound) {
+    let soundName = "shoot";
+    switch (player.weaponType) {
+      case "spread": soundName = "shoot_spread"; break;
+      case "rapid": soundName = "shoot_rapid"; break;
+      case "laser": soundName = "shoot_laser"; break;
+    }
+    SAAAM.playSound(soundName);
+  }
+  
+  // Create bullets based on weapon type
+  if (player.weaponType === "spread") {
+    // Spread shot (3 bullets)
+    for (let i = -1; i <= 1; i++) {
+      const spreadAngle = i * 15;
+      const bulletRotation = player.rotation + spreadAngle;
+      
+      bullets.push({
+        x: player.x,
+        y: player.y,
+        type: "spread",
+        rotation: bulletRotation,
+        speed: BULLET_SPEED,
+        damage: 10,
+        life: 1.0
+      });
+    }
+  } else if (player.weaponType === "rapid") {
+    // Rapid shot (single bullet, but faster)
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      type: "rapid",
+      rotation: player.rotation,
+      speed: BULLET_SPEED * 1.5,
+      damage: 7,
+      life: 0.8
+    });
+  } else if (player.weaponType === "laser") {
+    // Laser (instant hit, high damage)
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      type: "laser",
+      rotation: player.rotation,
+      speed: 0, // Doesn't move
+      damage: 40,
+      life: 0.15
+    });
+  } else {
+    // Normal shot
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      type: "normal",
+      rotation: player.rotation,
+      speed: BULLET_SPEED,
+      damage: 15,
+      life: 1.2
+    });
+  }
+}
+
+// Update all bullets
+function updateBullets(deltaTime) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const bullet = bullets[i];
+    
+    // Update bullet life
+    bullet.life -= deltaTime;
+    
+    // Remove expired bullets
+    if (bullet.life <= 0) {
+      bullets.splice(i, 1);
+      continue;
+    }
+    
+    // Update position (except for laser)
+    if (bullet.type !== "laser") {
+      const radians = bullet.rotation * Math.PI / 180;
+      bullet.x += Math.cos(radians) * bullet.speed * deltaTime;
+      bullet.y += Math.sin(radians) * bullet.speed * deltaTime;
+      
+      // Remove bullets that go off screen
+      if (bullet.x < -20 || bullet.x > 820 || 
+          bullet.y < -20 || bullet.y > 620) {
+        bullets.splice(i, 1);
+      }
+    }
+  }
+}
+
+// Handle enemy spawning
+function updateEnemySpawning(deltaTime) {
+  enemySpawnTimer += deltaTime;
+  
+  // Adjust spawn rate based on score
+  const difficultyFactor = Math.min(1 + score / 1000, 3);
+  const minDelay = ENEMY_SPAWN_DELAY_MIN / difficultyFactor;
+  const maxDelay = ENEMY_SPAWN_DELAY_MAX / difficultyFactor;
+  
+  if (enemySpawnTimer >= nextEnemySpawnDelay) {
+    spawnEnemy();
+    enemySpawnTimer = 0;
+    nextEnemySpawnDelay = minDelay + Math.random() * (maxDelay - minDelay);
+  }
+}
+
+// Spawn a random enemy
+function spawnEnemy() {
+  // Choose spawn position (outside screen)
+  let x, y;
+  const side = Math.floor(Math.random() * 4);
+  
+  switch (side) {
+    case 0: // Top
+      x = Math.random() * 800;
+      y = -30;
+      break;
+    case 1: // Right
+      x = 830;
+      y = Math.random() * 600;
+      break;
+    case 2: // Bottom
+      x = Math.random() * 800;
+      y = 630;
+      break;
+    case 3: // Left
+      x = -30;
+      y = Math.random() * 600;
+      break;
+  }
+  
+  // Choose enemy type based on score
+  let enemyType;
+  const typeRoll = Math.random();
+  
+  if (score < 500) {
+    enemyType = "chaser"; // Only chasers at the start
+  } else if (score < 2000) {
+    enemyType = typeRoll < 0.7 ? "chaser" : "shooter";
+  } else {
+    if (typeRoll < 0.5) {
+      enemyType = "chaser";
+    } else if (typeRoll < 0.8) {
+      enemyType = "shooter";
+    } else {
+      enemyType = "tank";
+    }
+  }
+  
+  // Create the enemy
+  const enemy = {
+    x: x,
+    y: y,
+    type: enemyType,
+    rotation: 0,
+    health: 0,
+    maxHealth: 0,
+    speed: 0,
+    fireTimer: 1 + Math.random() * 2, // Initial delay before firing
+    fireRate: 0
+  };
+  
+  // Set properties based on type
+  switch (enemyType) {
+    case "chaser":
+      enemy.health = 30;
+      enemy.maxHealth = 30;
+      enemy.speed = ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN);
+      break;
+    case "shooter":
+      enemy.health = 50;
+      enemy.maxHealth = 50;
+      enemy.speed = ENEMY_SPEED_MIN * 0.6 + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN) * 0.6;
+      enemy.fireRate = 1.5 + Math.random() * 1.0;
+      break;
+    case "tank":
+      enemy.health = 120;
+      enemy.maxHealth = 120;
+      enemy.speed = ENEMY_SPEED_MIN * 0.4 + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN) * 0.3;
+      enemy.fireRate = 2.5 + Math.random() * 1.0;
+      break;
+  }
+  
+  enemies.push(enemy);
+}
+
+// Update all enemies
+function updateEnemies(deltaTime) {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
+    
+    // Update enemy based on type
+    switch (enemy.type) {
+      case "chaser":
+        updateChaserEnemy(enemy, deltaTime);
+        break;
+      case "shooter":
+        updateShooterEnemy(enemy, deltaTime);
+        break;
+      case "tank":
+        updateTankEnemy(enemy, deltaTime);
+        break;
+    }
+  }
+}
+
+// Update chaser enemy (moves directly toward player)
+function updateChaserEnemy(enemy, deltaTime) {
+  // Calculate direction to player
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  // Update rotation to face player
+  enemy.rotation = Math.atan2(dy, dx) * 180 / Math.PI;
+  
+  // Move toward player
+  if (distance > 0) {
+    const moveX = dx / distance * enemy.speed * deltaTime;
+    const moveY = dy / distance * enemy.speed * deltaTime;
+    enemy.x += moveX;
+    enemy.y += moveY;
+  }
+}
+
+// Update shooter enemy (keeps distance and shoots)
+function updateShooterEnemy(enemy, deltaTime) {
+  // Calculate direction to player
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  // Update rotation to face player
+  enemy.rotation = Math.atan2(dy, dx) * 180 / Math.PI;
+  
+  // Update fire timer
+  if (enemy.fireTimer > 0) {
+    enemy.fireTimer -= deltaTime;
+  } else {
+    // Fire at player
+    enemyShoot(enemy);
+    enemy.fireTimer = enemy.fireRate;
+  }
+  
+  // Move toward player but keep distance
+  const idealDistance = 250;
+  if (distance > 0) {
+    let speed = enemy.speed;
+    
+    // Adjust speed based on distance
+    if (distance > idealDistance + 50) {
+      // Move toward player
+      speed = enemy.speed;
+    } else if (distance < idealDistance - 50) {
+      // Move away from player
+      speed = -enemy.speed * 0.7;
+    } else {
+      // Strafe around player
+      const strafeAngle = enemy.rotation + 90;
+      const radians = strafeAngle * Math.PI / 180;
+      enemy.x += Math.cos(radians) * enemy.speed * 0.5 * deltaTime;
+      enemy.y += Math.sin(radians) * enemy.speed * 0.5 * deltaTime;
+      return;
+    }
+    
+    const moveX = dx / distance * speed * deltaTime;
+    const moveY = dy / distance * speed * deltaTime;
+    enemy.x += moveX;
+    enemy.y += moveY;
+  }
+}
+
+// Update tank enemy (slow but tough)
+function updateTankEnemy(enemy, deltaTime) {
+  // Calculate direction to player
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  // Update rotation slowly to face player
+  const targetRotation = Math.atan2(dy, dx) * 180 / Math.PI;
+  const rotationDiff = targetRotation - enemy.rotation;
+  
+  // Normalize rotation difference to -180 to 180
+  let normalizedDiff = rotationDiff;
+  while (normalizedDiff > 180) normalizedDiff -= 360;
+  while (normalizedDiff < -180) normalizedDiff += 360;
+  
+  // Rotate toward player slowly
+  enemy.rotation += normalizedDiff * 2 * deltaTime;
+  
+  // Update fire timer
+  if (enemy.fireTimer > 0) {
+    enemy.fireTimer -= deltaTime;
+  } else if (Math.abs(normalizedDiff) < 30) {
+    // Fire at player if roughly facing them
+    enemyShoot(enemy);
+    enemy.fireTimer = enemy.fireRate;
+  }
+  
+  // Move toward player
+  if (distance > 0) {
+    // Use the enemy's actual rotation for movement
+    const radians = enemy.rotation * Math.PI / 180;
+    const moveX = Math.cos(radians) * enemy.speed * deltaTime;
+    const moveY = Math.sin(radians) * enemy.speed * deltaTime;
+    enemy.x += moveX;
+    enemy.y += moveY;
+  }
+}
+
+// Enemy shooting
+function enemyShoot(enemy) {
+  // Fire sound
+  if (SAAAM.playSound) {
+    SAAAM.playSound("enemy_shoot");
+  }
+  
+  // Create enemy bullet
+  const radians = enemy.rotation * Math.PI / 180;
+  let bulletSpeed = BULLET_SPEED * 0.7;
+  let bulletDamage = 10;
+  
+  if (enemy.type === "tank") {
+    // Tank has slow but powerful shots
+    bulletSpeed *= 0.8;
+    bulletDamage = 25;
+  }
+  
+  const bullet = {
+    x: enemy.x + Math.cos(radians) * 20,
+    y: enemy.y + Math.sin(radians) * 20,
+    rotation: enemy.rotation,
+    speed: bulletSpeed,
+    damage: bulletDamage,
+    life: 2.0,
+    isEnemyBullet: true
+  };
+  
+  bullets.push(bullet);
+}
+
+// Update powerups
+function updatePowerups(deltaTime) {
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const powerup = powerups[i];
+    
+    // Move powerup
+    powerup.x += powerup.vx * deltaTime;
+    powerup.y += powerup.vy * deltaTime;
+    
+    // Rotate toward player if close
+    const dx = player.x - powerup.x;
+    const dy = player.y - powerup.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance < 150) {
+      // Accelerate toward player
+      const acceleration = 300 / Math.max(50, distance);
+      powerup.vx += dx / distance * acceleration * deltaTime;
+      powerup.vy += dy / distance * acceleration * deltaTime;
+    }
+    
+    // Apply friction
+    powerup.vx *= 0.99;
+    powerup.vy *= 0.99;
+    
+    // Remove powerups that go off screen
+    if (powerup.x < -30 || powerup.x > 830 || 
+        powerup.y < -30 || powerup.y > 630) {
+      powerups.splice(i, 1);
+    }
+  }
+}
+
+// Check all collisions
+function checkCollisions() {
+  // Player vs Enemy collision
+  if (player.damageTimer <= 0) {
+    for (const enemy of enemies) {
+      if (circleCollision(
+        player.x, player.y, 15,
+        enemy.x, enemy.y, enemy.type === "tank" ? 20 : 15
+      )) {
+        // Damage player
+        const damage = enemy.type === "tank" ? 30 : 20;
+        playerTakeDamage(damage);
+        
+        // Knockback player
+        const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+        player.x += Math.cos(angle) * 30;
+        player.y += Math.sin(angle) * 30;
+        
+        // Constrain player to screen
+        player.x = Math.max(20, Math.min(780, player.x));
+        player.y = Math.max(20, Math.min(580, player.y));
+        
+        // Create explosion
+        createExplosion(
+          player.x + (Math.random() - 0.5) * 30,
+          player.y + (Math.random() - 0.5) * 30,
+          30,
+          ["#F44336", "#FF9800", "#FFEB3B"]
+        );
+        
+        break;
+      }
+    }
+  }
+  
+  // Player vs Powerup collision
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const powerup = powerups[i];
+    
+    if (circleCollision(
+      player.x, player.y, 20,
+      powerup.x, powerup.y, 15
+    )) {
+      // Apply powerup
+      applyPowerup(powerup);
+      
+      // Remove powerup
+      powerups.splice(i, 1);
+      
+      // Play collect sound
+      if (SAAAM.playSound) {
+        SAAAM.playSound("powerup");
+      }
+    }
+  }
+  
+  // Bullet vs Enemy collision
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const bullet = bullets[i];
+    
+    // Skip enemy bullets
+    if (bullet.isEnemyBullet) continue;
+    
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const enemy = enemies[j];
+      
+      // Laser hits everything in its path
+      if (bullet.type === "laser") {
+        const radians = bullet.rotation * Math.PI / 180;
+        const dirX = Math.cos(radians);
+        const dirY = Math.sin(radians);
+        
+        // Calculate closest point on laser line to enemy center
+        const enemyToLaserX = enemy.x - bullet.x;
+        const enemyToLaserY = enemy.y - bullet.y;
+        
+        const projection = enemyToLaserX * dirX + enemyToLaserY * dirY;
+        const closestPointX = bullet.x + dirX * projection;
+        const closestPointY = bullet.y + dirY * projection;
+        
+        // Check if point is along the laser beam
+        if (projection > 0 && projection < 1000) {
+          // Check distance from enemy to laser beam
+          const distance = Math.sqrt(
+            Math.pow(enemy.x - closestPointX, 2) + 
+            Math.pow(enemy.y - closestPointY, 2)
+          );
+          
+          if (distance < (enemy.type === "tank" ? 20 : 15)) {
+            // Damage enemy
+            const damage = bullet.damage * deltaTime * 10; // Continuous damage
+            enemy.health -= damage;
+            
+            // Create small particles at hit point
+            createExplosion(
+              closestPointX,
+              closestPointY,
+              5,
+              ["#FF5722", "#FFEB3B", "#FFFFFF"],
+              5
+            );
+            
+            // Check if enemy is defeated
+            if (enemy.health <= 0) {
+              defeatedEnemy(enemy);
+              enemies.splice(j, 1);
+            }
+            
+            // No need to remove laser as it persists
+            break;
+          }
+        }
+      }
+      // Normal bullet collision
+      else if (circleCollision(
+        bullet.x, bullet.y, bullet.type === "spread" ? 5 : 3,
+        enemy.x, enemy.y, enemy.type === "tank" ? 20 : 15
+      )) {
+        // Damage enemy
+        enemy.health -= bullet.damage;
+        
+        // Create explosion at hit point
+        createExplosion(
+          bullet.x,
+          bullet.y,
+          10,
+          ["#FFFFFF", "#FFEB3B", "#FF9800"]
+        );
+        
+        // Check if enemy is defeated
+        if (enemy.health <= 0) {
+          defeatedEnemy(enemy);
+          enemies.splice(j, 1);
+        }
+        
+        // Remove bullet
+        bullets.splice(i, 1);
+        break;
+      }
+    }
+  }
+  
+  // Player vs Enemy Bullet collision
+  if (player.damageTimer <= 0) {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const bullet = bullets[i];
+      
+      // Only check enemy bullets
+      if (!bullet.isEnemyBullet) continue;
+      
+      if (circleCollision(
+        bullet.x, bullet.y, 5,
+        player.x, player.y, 15
+      )) {
+        // Damage player
+        playerTakeDamage(bullet.damage);
+        
+        // Create explosion
+        createExplosion(
+          bullet.x,
+          bullet.y,
+          15,
+          ["#F44336", "#FF9800", "#FFEB3B"]
+        );
+        
+        // Remove bullet
+        bullets.splice(i, 1);
+      }
+    }
+  }
+}
+
+// Player takes damage
+function playerTakeDamage(amount) {
+  player.health -= amount;
+  player.damageTimer = 1.0; // Invulnerability period
+  
+  // Play damage sound
+  if (SAAAM.playSound) {
+    SAAAM.playSound("hurt");
+  }
+  
+  // Check for game over
+  if (player.health <= 0) {
+    gameOver();
+  }
+}
+
+// Handle defeated enemy
+function defeatedEnemy(enemy) {
+  // Add to score
+  let points;
+  switch (enemy.type) {
+    case "chaser": points = 100; break;
+    case "shooter": points = 200; break;
+    case "tank": points = 500; break;
+    default: points = 100;
+  }
+  
+  // Play enemy defeat sound
+  if (SAAAM.playSound) {
+    SAAAM.playSound("explosion");
+  }
+  
+  // Create score particle
+  particles.push({
+    type: "score",
+    x: enemy.x,
+    y: enemy.y - 20,
+    text: "+" + points,
+    color: "#FFFFFF",
+    life: 1.0,
+    maxLife: 1.0,
+    vy: -40
+  });
+  
+  score += points;
+  
+  // Check for new high score
+  if (score > highScore) {
+    highScore = score;
+    
+    // Save high score if available
+    if (SAAAM.saveData) {
+      SAAAM.saveData("shooter_high_score", highScore.toString());
+    }
+  }
+  
+  // Create large explosion
+  const size = enemy.type === "tank" ? 50 : 30;
+  createExplosion(enemy.x, enemy.y, size, ["#F44336", "#FF9800", "#FFEB3B"]);
+  
+  // Chance to spawn powerup
+  if (Math.random() < POWERUP_SPAWN_CHANCE || 
+      (enemy.type === "tank" && Math.random() < 0.3)) { // Higher chance for tanks
+    spawnPowerup(enemy.x, enemy.y);
+  }
+}
+
+// Spawn a powerup
+function spawnPowerup(x, y) {
+  // Choose powerup type
+  const types = ["spread", "rapid", "laser", "health"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  
+  // Create powerup
+  const powerup = {
+    x: x,
+    y: y,
+    type: type,
+    vx: (Math.random() - 0.5) * 50,
+    vy: (Math.random() - 0.5) * 50
+  };
+  
+  powerups.push(powerup);
+}
+
+// Apply a powerup to the player
+function applyPowerup(powerup) {
+  if (powerup.type === "health") {
+    // Health powerup
+    player.health = Math.min(player.health + 30, player.maxHealth);
+    
+    // Create healing particles
+    createExplosion(
+      player.x, player.y, 40,
+      ["#F44336", "#E91E63", "#FFFFFF"],
+      15
+    );
+  } else {
+    // Weapon powerup
+    player.weaponType = powerup.type;
+    player.powerupTimer = 15; // 15 seconds
+    
+    // Create powerup particles
+    let colors;
+    switch (powerup.type) {
+      case "spread": colors = ["#FFEB3B", "#FFC107", "#FFFFFF"]; break;
+      case "rapid": colors = ["#8BC34A", "#4CAF50", "#FFFFFF"]; break;
+      case "laser": colors = ["#FF5722", "#FF9800", "#FFFFFF"]; break;
+    }
+    
+    createExplosion(player.x, player.y, 40, colors, 15);
+  }
+}
+
+// Create explosion particles
+function createExplosion(x, y, size, colors, count = 20) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 100;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    
+    particles.push({
+      type: "explosion",
+      x: x,
+      y: y,
+      size: 2 + Math.random() * (size / 5),
+      color: color,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.5 + Math.random() * 0.5,
+      maxLife: 0.5 + Math.random() * 0.5
+    });
+  }
+}
+
+// Update particles
+function updateParticles(deltaTime) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const particle = particles[i];
+    
+    // Update life
+    particle.life -= deltaTime;
+    
+    // Remove dead particles
+    if (particle.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    
+    // Update position
+    particle.x += particle.vx * deltaTime;
+    particle.y += particle.vy * deltaTime;
+    
+    // Apply drag/gravity if appropriate
+    if (particle.type === "explosion") {
+      particle.vx *= 0.95;
+      particle.vy *= 0.95;
+      particle.vy += 50 * deltaTime; // Slight gravity
+    } else if (particle.type === "trail") {
+      particle.vx *= 0.9;
+      particle.vy *= 0.9;
+    } else if (particle.type === "score") {
+      particle.vy *= 0.9; // Slow down
+    }
+  }
+}
+
+// Circle collision detection
+function circleCollision(x1, y1, r1, x2, y2, r2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return distance < r1 + r2;
+}
+
+// Start the game
+function startGame() {
+  gameState = "playing";
+  resetGame();
+  
+  // Play start sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("start");
+  }
+}
+
+// Reset the game
+function resetGame() {
+  // Reset player
+  player.x = 400;
+  player.y = 300;
+  player.health = player.maxHealth;
+  player.damageTimer = 0;
+  player.powerupTimer = 0;
+  player.weaponType = "normal";
+  
+  // Clear arrays
+  bullets = [];
+  enemies = [];
+  particles = [];
+  powerups = [];
+  
+  // Reset game state
+  score = 0;
+  enemySpawnTimer = 0;
+  nextEnemySpawnDelay = 2;
+}
+
+// Game over
+function gameOver() {
+  gameState = "gameover";
+  gameOverTime = gameTime;
+  
+  // Play game over sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("gameover");
+  }
+  
+  // Create large explosion at player position
+  createExplosion(
+    player.x, player.y, 100,
+    ["#F44336", "#FF9800", "#FFEB3B", "#FFFFFF"],
+    50
+  );
+} 0.5) * 30,
+          player.y + (Math.random() -
