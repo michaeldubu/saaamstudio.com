@@ -1,0 +1,500 @@
+// Particle Playground - Interactive Template
+// A creative sandbox for experimenting with particle effects
+
+// Register game lifecycle functions
+SAAAM.registerCreate(create);
+SAAAM.registerStep(step);
+SAAAM.registerDraw(draw);
+
+// Constants for particle system
+const MAX_PARTICLES = 2000;
+const GRAVITY = 200;
+const EMISSION_RATE = 50; // Particles per second
+
+// Main particle system
+let particles = [];
+let emitters = [];
+let currentEmitterIndex = 0;
+
+// UI state
+let showUI = true;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let selectedParameter = null;
+let sliders = [];
+
+// Create function - run once at game start
+function create() {
+  console.log("Particle Playground initialized!");
+  
+  // Create default emitters
+  createDefaultEmitters();
+  
+  // Create UI controls
+  createUIControls();
+  
+  // Play ambient music if available
+  if (SAAAM.playMusic) {
+    SAAAM.playMusic("ambient", 0.3, true);
+  }
+}
+
+// Step function - run every frame
+function step(deltaTime) {
+  // Handle UI interaction
+  handleInput(deltaTime);
+  
+  // Update emitters
+  updateEmitters(deltaTime);
+  
+  // Update particles
+  updateParticles(deltaTime);
+  
+  // Particle cleanup
+  cleanupParticles();
+}
+
+// Draw function - render the scene
+function draw(ctx) {
+  // Draw background
+  drawBackground(ctx);
+  
+  // Draw particles
+  drawParticles(ctx);
+  
+  // Draw emitters
+  drawEmitters(ctx);
+  
+  // Draw UI
+  if (showUI) {
+    drawUI(ctx);
+  }
+  
+  // Draw info text
+  drawInfoText(ctx);
+}
+
+// Create default particle emitters
+function createDefaultEmitters() {
+  // Fire emitter
+  emitters.push({
+    name: "Fire",
+    x: 400,
+    y: 450,
+    active: true,
+    color1: "#FF5722",
+    color2: "#FFEB3B",
+    minSpeed: 50,
+    maxSpeed: 150,
+    minSize: 5,
+    maxSize: 15,
+    minLife: 0.5,
+    maxLife: 2.0,
+    spreadAngle: 30,
+    direction: -90, // Up
+    gravity: 0,
+    opacity: 0.8,
+    useBlending: true,
+    emissionShape: "point",
+    emissionRate: EMISSION_RATE * 1.5,
+    particleShape: "circle",
+    fadeMode: "out"
+  });
+  
+  // Water fountain
+  emitters.push({
+    name: "Fountain",
+    x: 200,
+    y: 400,
+    active: true,
+    color1: "#29B6F6",
+    color2: "#81D4FA",
+    minSpeed: 200,
+    maxSpeed: 300,
+    minSize: 3,
+    maxSize: 8,
+    minLife: 0.8,
+    maxLife: 2.0,
+    spreadAngle: 20,
+    direction: -90, // Up
+    gravity: GRAVITY,
+    opacity: 0.8,
+    useBlending: true,
+    emissionShape: "point",
+    emissionRate: EMISSION_RATE,
+    particleShape: "circle",
+    fadeMode: "out"
+  });
+  
+  // Smoke
+  emitters.push({
+    name: "Smoke",
+    x: 600,
+    y: 450,
+    active: true,
+    color1: "#78909C",
+    color2: "#B0BEC5",
+    minSpeed: 20,
+    maxSpeed: 50,
+    minSize: 10,
+    maxSize: 30,
+    minLife: 2.0,
+    maxLife: 5.0,
+    spreadAngle: 20,
+    direction: -90, // Up
+    gravity: -10, // Slight upward drift
+    opacity: 0.4,
+    useBlending: false,
+    emissionShape: "point",
+    emissionRate: EMISSION_RATE * 0.7,
+    particleShape: "circle",
+    fadeMode: "out"
+  });
+  
+  // Magic sparkles
+  emitters.push({
+    name: "Magic",
+    x: 300,
+    y: 300,
+    active: true,
+    color1: "#E040FB",
+    color2: "#7C4DFF",
+    minSpeed: 100,
+    maxSpeed: 200,
+    minSize: 2,
+    maxSize: 6,
+    minLife: 1.0,
+    maxLife: 3.0,
+    spreadAngle: 360, // All directions
+    direction: 0,
+    gravity: 0,
+    opacity: 1.0,
+    useBlending: true,
+    emissionShape: "circle",
+    emissionRadius: 50,
+    emissionRate: EMISSION_RATE * 0.8,
+    particleShape: "star",
+    fadeMode: "pulse"
+  });
+  
+  // Snow
+  emitters.push({
+    name: "Snow",
+    x: 500,
+    y: 50,
+    active: true,
+    color1: "#FFFFFF",
+    color2: "#E3F2FD",
+    minSpeed: 30,
+    maxSpeed: 70,
+    minSize: 3,
+    maxSize: 8,
+    minLife: 5.0,
+    maxLife: 10.0,
+    spreadAngle: 30,
+    direction: 90, // Down
+    gravity: 20, // Light gravity
+    opacity: 0.9,
+    useBlending: false,
+    emissionShape: "line",
+    emissionWidth: 800,
+    emissionRate: EMISSION_RATE * 0.5,
+    particleShape: "flake",
+    fadeMode: "none"
+  });
+}
+
+// Create UI controls
+function createUIControls() {
+  // Parameter sliders
+  sliders = [
+    { name: "Min Speed", property: "minSpeed", min: 0, max: 300, step: 5 },
+    { name: "Max Speed", property: "maxSpeed", min: 0, max: 500, step: 5 },
+    { name: "Min Size", property: "minSize", min: 1, max: 30, step: 1 },
+    { name: "Max Size", property: "maxSize", min: 1, max: 50, step: 1 },
+    { name: "Min Life", property: "minLife", min: 0.1, max: 5, step: 0.1 },
+    { name: "Max Life", property: "maxLife", min: 0.1, max: 10, step: 0.1 },
+    { name: "Spread Angle", property: "spreadAngle", min: 0, max: 360, step: 5 },
+    { name: "Direction", property: "direction", min: -180, max: 180, step: 5 },
+    { name: "Gravity", property: "gravity", min: -300, max: 300, step: 10 },
+    { name: "Opacity", property: "opacity", min: 0, max: 1, step: 0.05 },
+    { name: "Emission Rate", property: "emissionRate", min: 1, max: 200, step: 1 }
+  ];
+}
+
+// Handle user input
+function handleInput(deltaTime) {
+  // Toggle UI with spacebar
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.space)) {
+    showUI = !showUI;
+  }
+  
+  // Cycle through emitters with Tab
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.tab)) {
+    currentEmitterIndex = (currentEmitterIndex + 1) % emitters.length;
+    
+    // Play sound if available
+    if (SAAAM.playSound) {
+      SAAAM.playSound("click");
+    }
+  }
+  
+  // Toggle current emitter with Enter
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.enter)) {
+    emitters[currentEmitterIndex].active = !emitters[currentEmitterIndex].active;
+    
+    // Play sound if available
+    if (SAAAM.playSound) {
+      SAAAM.playSound("toggle");
+    }
+  }
+  
+  // Handle mouse input for dragging emitters
+  if (SAAAM.mouseCheckPressed(0)) {
+    const mouseX = SAAAM.mouseX;
+    const mouseY = SAAAM.mouseY;
+    
+    // Check if clicking on an emitter
+    for (let i = 0; i < emitters.length; i++) {
+      const emitter = emitters[i];
+      const distance = Math.sqrt(
+        Math.pow(mouseX - emitter.x, 2) + 
+        Math.pow(mouseY - emitter.y, 2)
+      );
+      
+      if (distance < 25) {
+        currentEmitterIndex = i;
+        isDragging = true;
+        dragStartX = mouseX - emitter.x;
+        dragStartY = mouseY - emitter.y;
+        
+        // Play sound if available
+        if (SAAAM.playSound) {
+          SAAAM.playSound("grab");
+        }
+        
+        break;
+      }
+    }
+    
+    // Check if clicking on a slider
+    if (showUI && !isDragging) {
+      const sliderY = 500;
+      const sliderHeight = 30;
+      const sliderWidth = 150;
+      const labelWidth = 100;
+      const startX = 100;
+      const currentEmitter = emitters[currentEmitterIndex];
+      
+      for (let i = 0; i < sliders.length; i++) {
+        const slider = sliders[i];
+        const x = startX + (i % 3) * (sliderWidth + labelWidth + 20);
+        const y = sliderY + Math.floor(i / 3) * sliderHeight;
+        
+        if (mouseX >= x + labelWidth && mouseX <= x + labelWidth + sliderWidth &&
+            mouseY >= y && mouseY <= y + sliderHeight) {
+          selectedParameter = slider;
+          
+          // Calculate value based on mouse position
+          const value = slider.min + (mouseX - (x + labelWidth)) / sliderWidth * (slider.max - slider.min);
+          const roundedValue = Math.round(value / slider.step) * slider.step;
+          
+          // Update emitter property
+          currentEmitter[slider.property] = Math.min(slider.max, Math.max(slider.min, roundedValue));
+          
+          // Play sound if available
+          if (SAAAM.playSound) {
+            SAAAM.playSound("click");
+          }
+          
+          break;
+        }
+      }
+    }
+  }
+  
+  // Handle slider dragging
+  if (SAAAM.mouseCheck(0) && selectedParameter) {
+    const mouseX = SAAAM.mouseX;
+    const sliderY = 500;
+    const sliderWidth = 150;
+    const labelWidth = 100;
+    const startX = 100;
+    const currentEmitter = emitters[currentEmitterIndex];
+    const index = sliders.indexOf(selectedParameter);
+    
+    const x = startX + (index % 3) * (sliderWidth + labelWidth + 20);
+    
+    // Calculate value based on mouse position
+    const sliderX = Math.max(x + labelWidth, Math.min(x + labelWidth + sliderWidth, mouseX));
+    const value = selectedParameter.min + 
+      (sliderX - (x + labelWidth)) / sliderWidth * 
+      (selectedParameter.max - selectedParameter.min);
+    
+    const roundedValue = Math.round(value / selectedParameter.step) * selectedParameter.step;
+    
+    // Update emitter property
+    currentEmitter[selectedParameter.property] = Math.min(
+      selectedParameter.max, 
+      Math.max(selectedParameter.min, roundedValue)
+    );
+  }
+  
+  // Handle emitter dragging
+  if (SAAAM.mouseCheck(0) && isDragging) {
+    const mouseX = SAAAM.mouseX;
+    const mouseY = SAAAM.mouseY;
+    
+    emitters[currentEmitterIndex].x = mouseX - dragStartX;
+    emitters[currentEmitterIndex].y = mouseY - dragStartY;
+  }
+  
+  // Release dragging
+  if (SAAAM.mouseCheckReleased(0)) {
+    isDragging = false;
+    selectedParameter = null;
+  }
+  
+  // Handle color changing (1-2 keys)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk[1]) || SAAAM.keyboardCheckPressed(SAAAM.vk.numpad1)) {
+    changeEmitterColor(0);
+  }
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk[2]) || SAAAM.keyboardCheckPressed(SAAAM.vk.numpad2)) {
+    changeEmitterColor(1);
+  }
+  
+  // Change particle shape (S key)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.s)) {
+    cycleParticleShape();
+  }
+  
+  // Change emission shape (E key)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.e)) {
+    cycleEmissionShape();
+  }
+  
+  // Change fade mode (F key)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.f)) {
+    cycleFadeMode();
+  }
+  
+  // Toggle blending (B key)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.b)) {
+    emitters[currentEmitterIndex].useBlending = !emitters[currentEmitterIndex].useBlending;
+    
+    // Play sound if available
+    if (SAAAM.playSound) {
+      SAAAM.playSound("toggle");
+    }
+  }
+  
+  // Create new emitter (N key)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.n)) {
+    createNewEmitter();
+  }
+  
+  // Delete current emitter (Delete or Backspace key)
+  if (SAAAM.keyboardCheckPressed(SAAAM.vk.delete) || SAAAM.keyboardCheckPressed(SAAAM.vk.backspace)) {
+    if (emitters.length > 1) {
+      emitters.splice(currentEmitterIndex, 1);
+      currentEmitterIndex = Math.min(currentEmitterIndex, emitters.length - 1);
+      
+      // Play sound if available
+      if (SAAAM.playSound) {
+        SAAAM.playSound("delete");
+      }
+    }
+  }
+}
+
+// Change the color of the current emitter
+function changeEmitterColor(colorIndex) {
+  const colors = [
+    ["#F44336", "#FFEB3B"],  // Red-Yellow (Fire)
+    ["#29B6F6", "#81D4FA"],  // Blue (Water)
+    ["#78909C", "#B0BEC5"],  // Gray (Smoke)
+    ["#E040FB", "#7C4DFF"],  // Purple (Magic)
+    ["#FFFFFF", "#E3F2FD"],  // White (Snow)
+    ["#4CAF50", "#8BC34A"],  // Green
+    ["#FFC107", "#FFEB3B"],  // Yellow
+    ["#FF5722", "#FF9800"],  // Orange
+    ["#9C27B0", "#E040FB"]   // Purple
+  ];
+  
+  const randomColorSet = colors[Math.floor(Math.random() * colors.length)];
+  
+  if (colorIndex === 0) {
+    emitters[currentEmitterIndex].color1 = randomColorSet[0];
+  } else {
+    emitters[currentEmitterIndex].color2 = randomColorSet[1];
+  }
+  
+  // Play sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("color");
+  }
+}
+
+// Cycle through particle shapes
+function cycleParticleShape() {
+  const shapes = ["circle", "square", "triangle", "star", "flake", "heart"];
+  const currentShape = emitters[currentEmitterIndex].particleShape;
+  const currentIndex = shapes.indexOf(currentShape);
+  const nextIndex = (currentIndex + 1) % shapes.length;
+  
+  emitters[currentEmitterIndex].particleShape = shapes[nextIndex];
+  
+  // Play sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("shape");
+  }
+}
+
+// Cycle through emission shapes
+function cycleEmissionShape() {
+  const shapes = ["point", "circle", "line", "rectangle"];
+  const currentShape = emitters[currentEmitterIndex].emissionShape;
+  const currentIndex = shapes.indexOf(currentShape);
+  const nextIndex = (currentIndex + 1) % shapes.length;
+  
+  emitters[currentEmitterIndex].emissionShape = shapes[nextIndex];
+  
+  // Add default properties for the shape if needed
+  if (shapes[nextIndex] === "circle" && !emitters[currentEmitterIndex].emissionRadius) {
+    emitters[currentEmitterIndex].emissionRadius = 50;
+  } else if (shapes[nextIndex] === "line" && !emitters[currentEmitterIndex].emissionWidth) {
+    emitters[currentEmitterIndex].emissionWidth = 200;
+  } else if (shapes[nextIndex] === "rectangle") {
+    if (!emitters[currentEmitterIndex].emissionWidth) emitters[currentEmitterIndex].emissionWidth = 100;
+    if (!emitters[currentEmitterIndex].emissionHeight) emitters[currentEmitterIndex].emissionHeight = 50;
+  }
+  
+  // Play sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("shape");
+  }
+}
+
+// Cycle through fade modes
+function cycleFadeMode() {
+  const modes = ["out", "in", "pulse", "none"];
+  const currentMode = emitters[currentEmitterIndex].fadeMode;
+  const currentIndex = modes.indexOf(currentMode);
+  const nextIndex = (currentIndex + 1) % modes.length;
+  
+  emitters[currentEmitterIndex].fadeMode = modes[nextIndex];
+  
+  // Play sound if available
+  if (SAAAM.playSound) {
+    SAAAM.playSound("toggle");
+  }
+}
+
+// Create a new emitter
+function createNewEmitter() {
+  const newEmitter = {
+    name: "New Emitter " + (emitters.length + 1),
+    x: 400,
+    y: 300,
+    active: true
