@@ -2,7 +2,7 @@
 
 ## Introduction to SAAAM
 
-Welcome to SAAAM (Simple and Accessible Architecture for Awesome Mechanics), a domain-specific language designed specifically for game development. SAAAM makes it easy for both beginners and experienced developers to create engaging 2D games with an intuitive syntax and powerful built-in features.
+Welcome to SAAAM (Simple-Architecture Accessible-Mechanics), a domain-specific language designed specifically for game development. SAAAM makes it easy for both beginners and experienced developers to create engaging 2D games with an intuitive syntax and powerful built-in features.
 
 This tutorial will guide you through the basics of SAAAM, starting with simple concepts and progressing to more complex game mechanics. By the end, you'll have the knowledge to create your own games using the SAAAM language and engine.
 
