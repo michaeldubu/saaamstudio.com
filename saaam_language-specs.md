@@ -2,7 +2,7 @@
 
 ## Overview
 
-SAAAM (Simple and Accessible Architecture for Awesome Mechanics) is a domain-specific language designed for 2D game development. It provides a clean, intuitive syntax focused on game mechanics and behavior, with built-in constructs for common game development patterns.
+SAAAM (Simple-Architecture Accessible-Mechanics) is a domain-specific language designed for 2D game development. It provides a clean, intuitive syntax focused on game mechanics and behavior, with built-in constructs for common game development patterns.
 
 ## Core Philosophy
 
